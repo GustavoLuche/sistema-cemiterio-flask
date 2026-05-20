@@ -25,7 +25,7 @@ Sistema web para facilitar a busca de registros de falecidos no Cemitério da Ig
 | Banco de Dados | PostgreSQL | 12+ |
 | Frontend | HTML5 + CSS3 | - |
 | Linguagem | Python | 3.10+ |
-| Hospedagem | Railway (prod) | - |
+| Hospedagem | Render (prod) | - |
 
 ## 📦 Instalação Local
 
@@ -114,33 +114,32 @@ falecidos
 └── data_atualizacao (TIMESTAMP)
 ```
 
-## 🚢 Deploy no Railway
+## 🚢 Deploy no Render
 
-### 1. Criar Conta Railway
-https://railway.app
+### Opção 1 (Recomendada): Blueprint automático
 
-### 2. Conectar GitHub
-- Login com conta GitHub
-- Autorizar Railway
+Este repositório inclui `render.yaml`, que cria PostgreSQL + Web Service automaticamente.
 
-### 3. Criar Projeto
-- New Project → GitHub Repo
-- Selecionar `sistema-cemiterio-flask`
+1. Acesse https://render.com
+2. New + → Blueprint
+3. Selecione o repo `GustavoLuche/sistema-cemiterio-flask`
+4. O Render criará:
+    - Banco PostgreSQL `cemiterio-db`
+    - Web Service `sistema-cemiterio-flask`
+    - Variáveis `DATABASE_URL`, `FLASK_ENV`, `FLASK_DEBUG`
 
-### 4. Adicionar PostgreSQL
-- Add Service → PostgreSQL
-- Railway gera `DATABASE_URL` automaticamente
+### Opção 2: Criação manual
 
-### 5. Configurar Variáveis de Ambiente
-No dashboard Railway:
+1. New + → PostgreSQL
+2. New + → Web Service (repo GitHub)
+3. Build Command: `pip install -r requirements.txt`
+4. Start Command: `gunicorn app:app`
+5. Em Environment, configurar:
 ```
-DATABASE_URL: (gerado automaticamente)
+DATABASE_URL: (connection string do Postgres)
 FLASK_ENV: production
 FLASK_DEBUG: False
 ```
-
-### 6. Deploy
-Railway faz deploy automático ao fazer push para `main`
 
 ## 📱 Uso
 

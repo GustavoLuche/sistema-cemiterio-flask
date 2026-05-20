@@ -1,0 +1,22 @@
+databases:
+  - name: cemiterio-db
+    databaseName: cemiterio_db
+    user: cemiterio_user
+    plan: free
+
+services:
+  - type: web
+    name: sistema-cemiterio-flask
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cemiterio-db
+          property: connectionString
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "False"
