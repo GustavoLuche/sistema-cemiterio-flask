@@ -1,5 +1,5 @@
 import os
-import psycopg2
+import psycopg
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 from datetime import datetime
@@ -15,7 +15,7 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 def get_db_connection():
     """Estabelecer conexão com PostgreSQL"""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = psycopg.connect(DATABASE_URL)
         return conn
     except Exception as e:
         print(f"Erro ao conectar ao banco: {e}")
