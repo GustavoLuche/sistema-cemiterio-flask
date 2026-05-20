@@ -21,6 +21,42 @@ def get_db_connection():
         print(f"Erro ao conectar ao banco: {e}")
         return None
 
+
+def init_db():
+    """Cria estrutura mínima do banco na inicialização do app."""
+    conn = get_db_connection()
+    if not conn:
+        return
+
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS falecidos (
+                id SERIAL PRIMARY KEY,
+                nome_falecido VARCHAR(255) NOT NULL,
+                data_falecimento DATE,
+                cemiterio VARCHAR(255) DEFAULT 'Cemitério da Igualdade',
+                setor VARCHAR(50) NOT NULL,
+                quadra VARCHAR(50) NOT NULL,
+                jazigo VARCHAR(50) NOT NULL,
+                observacoes TEXT,
+                data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_falecidos_nome ON falecidos (nome_falecido)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_falecidos_setor_quadra ON falecidos (setor, quadra)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_falecidos_jazigo ON falecidos (jazigo)")
+        conn.commit()
+        cur.close()
+    finally:
+        conn.close()
+
+
+init_db()
+
 @app.route('/')
 def index():
     """Página inicial com formulário de busca"""
