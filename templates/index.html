@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="search-container">
+    <h2>Buscar Falecido</h2>
+    <p class="help-text">Digite o nome completo ou parcial para encontrar o registro</p>
+    
+    <form id="searchForm">
+        <div class="form-group">
+            <input 
+                type="text" 
+                id="nomeInput" 
+                placeholder="Digite o nome do falecido..." 
+                required
+                autofocus
+            >
+            <button type="submit" class="btn btn-primary">Buscar</button>
+        </div>
+    </form>
+
+    <div id="results" class="results-container"></div>
+    <div id="error" class="error-container"></div>
+    <div id="loading" class="loading" style="display:none;">Buscando...</div>
+</div>
+
+<script>
+document.getElementById('searchForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const nome = document.getElementById('nomeInput').value.trim();
+    const resultsDiv = document.getElementById('results');
+    const errorDiv = document.getElementById('error');
+    const loadingDiv = document.getElementById('loading');
+    
+    // Limpar anteriores
+    resultsDiv.innerHTML = '';
+    errorDiv.innerHTML = '';
+    
+    if (!nome) {
+        errorDiv.innerHTML = '<p>Por favor, digite um nome</p>';
+        return;
+    }
+    
+    loadingDiv.style.display = 'block';
+    
+    try {
+        const response = await fetch('/api/buscar', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ nome })
+        });
+        
+        const data = await response.json();
+        loadingDiv.style.display = 'none';
+        
+        if (response.ok) {
+            if (data.resultados && data.resultados.length > 0) {
+                let html = `<h3>Resultados encontrados: ${data.total}</h3><div class="results-list">`;
+                
+                data.resultados.forEach(resultado => {
+                    html += `
+                        <div class="result-item">
+                            <h4>${resultado.nome}</h4>
+                            <p><strong>Setor:</strong> ${resultado.setor}</p>
+                            <p><strong>Quadra:</strong> ${resultado.quadra}</p>
+                            <p><strong>Jazigo:</strong> ${resultado.jazigo}</p>
+                            ${resultado.data_falecimento ? `<p><strong>Data:</strong> ${new Date(resultado.data_falecimento).toLocaleDateString('pt-BR')}</p>` : ''}
+                            ${resultado.observacoes ? `<p><strong>Observações:</strong> ${resultado.observacoes}</p>` : ''}
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                resultsDiv.innerHTML = html;
+            } else {
+                resultsDiv.innerHTML = '<p class="no-results">Nenhum resultado encontrado para "' + nome + '"</p>';
+            }
+        } else {
+            errorDiv.innerHTML = '<p>' + (data.erro || 'Erro ao buscar') + '</p>';
+        }
+    } catch (error) {
+        loadingDiv.style.display = 'none';
+        errorDiv.innerHTML = '<p>Erro de conexão: ' + error.message + '</p>';
+    }
+});
+</script>
+{% endblock %}
