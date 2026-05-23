@@ -1,5 +1,6 @@
 import os
-from datetime import date
+import random
+from datetime import date, timedelta
 
 import psycopg
 from dotenv import load_dotenv
@@ -10,6 +11,24 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+SETORES_VALIDOS = ("A", "B", "C", "D")
+QUADRAS_POR_SETOR = {setor: [f"{setor}{indice}" for indice in range(1, 11)] for setor in SETORES_VALIDOS}
+
+PRIMEIROS_NOMES = [
+    "Ana", "Maria", "Joao", "Jose", "Carlos", "Paulo", "Claudia", "Fernanda", "Rita", "Juliana",
+    "Marcos", "Patricia", "Silvia", "Luciana", "Antonio", "Francisco", "Roberta", "Sandra", "Pedro", "Luiz",
+]
+
+NOMES_MEIO = [
+    "Aparecida", "Cristina", "Eduardo", "Henrique", "Luiza", "Camila", "Tereza", "Fabio", "Celso", "Vera",
+    "Helena", "Mateus", "Carolina", "Beatriz", "Almeida", "Couto", "Pereira", "Lima", "Souza", "Andrade",
+]
+
+SOBRENOMES = [
+    "Santos", "Oliveira", "Silva", "Pereira", "Lopes", "Almeida", "Ribeiro", "Mendes", "Carvalho", "Ferreira",
+    "Matos", "Gomes", "Torres", "Monteiro", "Teixeira", "Nogueira", "Prado", "Bastos", "Barbosa", "Araujo",
+]
+
 
 def derive_birth_date(data_falecimento, idade_estimada=70):
     """Gera uma data de nascimento aproximada quando não houver valor explícito."""
@@ -19,6 +38,42 @@ def derive_birth_date(data_falecimento, idade_estimada=70):
     year = max(1900, data_falecimento.year - idade_estimada)
     day = min(data_falecimento.day, 28)
     return date(year, data_falecimento.month, day)
+
+
+def generate_bulk_records(total=1000, seed=20260523):
+    """Gera registros fictícios adicionais restritos aos setores A-D."""
+    rng = random.Random(seed)
+    records = []
+    start_death = date(2010, 1, 1)
+    death_range_days = (date(2025, 12, 31) - start_death).days
+
+    for index in range(total):
+        setor = SETORES_VALIDOS[index % len(SETORES_VALIDOS)]
+        quadra = rng.choice(QUADRAS_POR_SETOR[setor])
+        jazigo = f"{setor}-{1000 + index:04d}"
+
+        nome = (
+            f"{rng.choice(PRIMEIROS_NOMES)} "
+            f"{rng.choice(NOMES_MEIO)} "
+            f"{rng.choice(SOBRENOMES)}"
+        )
+
+        data_falecimento = start_death + timedelta(days=rng.randint(0, death_range_days))
+        idade = rng.randint(45, 97)
+
+        records.append(
+            {
+                "nome_falecido": nome,
+                "data_nascimento": derive_birth_date(data_falecimento, idade_estimada=idade),
+                "data_falecimento": data_falecimento,
+                "setor": setor,
+                "quadra": quadra,
+                "jazigo": jazigo,
+                "observacoes": "Registro ficticio gerado automaticamente para testes do sistema.",
+            }
+        )
+
+    return records
 
 
 SAMPLE_RECORDS = [
@@ -315,51 +370,70 @@ def seed_falecidos():
     inserted = 0
     skipped = 0
     backfilled = 0
+    records_to_seed = SAMPLE_RECORDS + generate_bulk_records(total=1000)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            for record in SAMPLE_RECORDS:
-                cur.execute(
-                    """
-                    SELECT id, data_nascimento, data_falecimento
-                    FROM falecidos
-                    WHERE nome_falecido = %s
-                      AND setor = %s
-                      AND quadra = %s
-                      AND jazigo = %s
-                    LIMIT 1
-                    """,
-                    (
-                        record["nome_falecido"],
-                        record["setor"],
-                        record["quadra"],
-                        record["jazigo"],
-                    ),
-                )
-                exists = cur.fetchone()
+            cur.execute(
+                """
+                SELECT id, nome_falecido, setor, quadra, jazigo, data_nascimento, data_falecimento
+                FROM falecidos
+                """
+            )
+            existing_rows = cur.fetchall()
 
-                if exists:
+            existing_index = {
+                (row[1], row[2], row[3], row[4]): {
+                    "id": row[0],
+                    "data_nascimento": row[5],
+                    "data_falecimento": row[6],
+                }
+                for row in existing_rows
+            }
+
+            insert_params = []
+            update_params = []
+
+            for record in records_to_seed:
+                key = (record["nome_falecido"], record["setor"], record["quadra"], record["jazigo"])
+                existing = existing_index.get(key)
+
+                if existing:
                     skipped += 1
-
-                    existing_id, existing_birth, existing_death = exists
-                    if not existing_birth:
+                    if not existing["data_nascimento"]:
                         birth = record.get("data_nascimento") or derive_birth_date(
-                            record.get("data_falecimento") or existing_death
+                            record.get("data_falecimento") or existing["data_falecimento"]
                         )
                         if birth:
-                            cur.execute(
-                                """
-                                UPDATE falecidos
-                                SET data_nascimento = %s,
-                                    data_atualizacao = CURRENT_TIMESTAMP
-                                WHERE id = %s
-                                """,
-                                (birth, existing_id),
-                            )
+                            update_params.append((birth, existing["id"]))
                             backfilled += 1
                     continue
 
-                cur.execute(
+                insert_params.append(
+                    (
+                        record["nome_falecido"],
+                        record.get("data_nascimento") or derive_birth_date(record.get("data_falecimento")),
+                        record["data_falecimento"],
+                        record["setor"],
+                        record["quadra"],
+                        record["jazigo"],
+                        record["observacoes"],
+                    )
+                )
+
+            if update_params:
+                cur.executemany(
+                    """
+                    UPDATE falecidos
+                    SET data_nascimento = %s,
+                        data_atualizacao = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    update_params,
+                )
+
+            if insert_params:
+                cur.executemany(
                     """
                     INSERT INTO falecidos (
                         nome_falecido,
@@ -371,22 +445,16 @@ def seed_falecidos():
                         observacoes
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (
-                        record["nome_falecido"],
-                        record.get("data_nascimento") or derive_birth_date(record.get("data_falecimento")),
-                        record["data_falecimento"],
-                        record["setor"],
-                        record["quadra"],
-                        record["jazigo"],
-                        record["observacoes"],
-                    ),
+                    insert_params,
                 )
-                inserted += 1
+
+            inserted = len(insert_params)
 
         conn.commit()
 
     print(
-        f"Seed concluido. Inseridos: {inserted}. Ja existentes: {skipped}. "
+        f"Seed concluido. Total processado: {len(records_to_seed)}. "
+        f"Inseridos: {inserted}. Ja existentes: {skipped}. "
         f"Nascimento preenchido: {backfilled}."
     )
 
