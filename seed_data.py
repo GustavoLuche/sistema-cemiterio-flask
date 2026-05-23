@@ -11,6 +11,16 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 
+def derive_birth_date(data_falecimento, idade_estimada=70):
+    """Gera uma data de nascimento aproximada quando não houver valor explícito."""
+    if not data_falecimento:
+        return None
+
+    year = max(1900, data_falecimento.year - idade_estimada)
+    day = min(data_falecimento.day, 28)
+    return date(year, data_falecimento.month, day)
+
+
 SAMPLE_RECORDS = [
     {
         "nome_falecido": "Maria Aparecida dos Santos",
@@ -304,13 +314,14 @@ def get_connection():
 def seed_falecidos():
     inserted = 0
     skipped = 0
+    backfilled = 0
 
     with get_connection() as conn:
         with conn.cursor() as cur:
             for record in SAMPLE_RECORDS:
                 cur.execute(
                     """
-                    SELECT 1
+                    SELECT id, data_nascimento, data_falecimento
                     FROM falecidos
                     WHERE nome_falecido = %s
                       AND setor = %s
@@ -329,21 +340,40 @@ def seed_falecidos():
 
                 if exists:
                     skipped += 1
+
+                    existing_id, existing_birth, existing_death = exists
+                    if not existing_birth:
+                        birth = record.get("data_nascimento") or derive_birth_date(
+                            record.get("data_falecimento") or existing_death
+                        )
+                        if birth:
+                            cur.execute(
+                                """
+                                UPDATE falecidos
+                                SET data_nascimento = %s,
+                                    data_atualizacao = CURRENT_TIMESTAMP
+                                WHERE id = %s
+                                """,
+                                (birth, existing_id),
+                            )
+                            backfilled += 1
                     continue
 
                 cur.execute(
                     """
                     INSERT INTO falecidos (
                         nome_falecido,
+                        data_nascimento,
                         data_falecimento,
                         setor,
                         quadra,
                         jazigo,
                         observacoes
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         record["nome_falecido"],
+                        record.get("data_nascimento") or derive_birth_date(record.get("data_falecimento")),
                         record["data_falecimento"],
                         record["setor"],
                         record["quadra"],
@@ -355,7 +385,10 @@ def seed_falecidos():
 
         conn.commit()
 
-    print(f"Seed concluido. Inseridos: {inserted}. Ja existentes: {skipped}.")
+    print(
+        f"Seed concluido. Inseridos: {inserted}. Ja existentes: {skipped}. "
+        f"Nascimento preenchido: {backfilled}."
+    )
 
 
 if __name__ == "__main__":

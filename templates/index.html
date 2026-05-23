@@ -2,42 +2,217 @@
 
 {% block content %}
 <div class="search-container">
-    <h2>Buscar Falecido</h2>
-    <p class="help-text">Digite o nome completo ou parcial para encontrar o registro</p>
-    
-    <form id="searchForm">
-        <div class="form-group">
-            <input 
-                type="text" 
-                id="nomeInput" 
-                placeholder="Digite o nome do falecido..." 
-                required
-                autofocus
-            >
-            <button type="submit" class="btn btn-primary">Buscar</button>
+    <section class="hero-search">
+        <div class="hero-copy">
+            <h2>Encontre o <span>local de descanso</span><br>de seus entes queridos</h2>
+            <p>Busca gratuita e pública · Os dados são gerenciados pela administração do cemitério</p>
         </div>
-    </form>
 
-    <div id="results" class="results-container"></div>
+        <form id="searchForm" class="search-card">
+            <div class="search-grid">
+                <div class="search-field search-field-nome">
+                    <label for="nomeInput">Nome do falecido</label>
+                    <input type="text" id="nomeInput" placeholder="Ex: Maria Aparecida Santos" autofocus>
+                </div>
+
+                <div class="search-field search-field-lapide">
+                    <label for="lapideInput">Nº da lápide</label>
+                    <input type="text" id="lapideInput" placeholder="Ex: A-042">
+                </div>
+
+                <div class="search-field search-field-setor">
+                    <label for="setorInput">Setor</label>
+                    <select id="setorInput">
+                        <option value="">Todos</option>
+                    </select>
+                </div>
+
+                <div class="search-field search-field-quadra">
+                    <label for="quadraInput">Quadra</label>
+                    <input type="text" id="quadraInput" placeholder="Ex: A1" list="quadraOptions">
+                    <datalist id="quadraOptions"></datalist>
+                </div>
+
+                <div class="search-field search-field-falecimento-de">
+                    <label for="dataFalecimentoDeInput">Data de falecimento (de)</label>
+                    <input type="date" id="dataFalecimentoDeInput">
+                </div>
+
+                <div class="search-field search-field-falecimento-ate">
+                    <label for="dataFalecimentoAteInput">Data de falecimento (até)</label>
+                    <input type="date" id="dataFalecimentoAteInput">
+                </div>
+
+                <button type="button" id="clearSearchBtn" class="btn btn-clear-search">✕ Limpar</button>
+                <button type="submit" class="btn btn-primary btn-search-main">🔎 Buscar Túmulo</button>
+            </div>
+        </form>
+    </section>
+
     <div id="error" class="error-container"></div>
-    <div id="loading" class="loading" style="display:none;">Buscando...</div>
+
+    <section class="results-map-layout">
+        <div class="results-panel">
+            <div class="results-header">
+                <h3 class="results-title">RESULTADOS</h3>
+                <span id="resultsCountBadge" class="results-count-badge">0</span>
+            </div>
+
+            <div id="resultsFilters" class="results-filters"></div>
+            <div id="loading" class="loading" style="display:none;">Buscando...</div>
+            <div id="results" class="results-container"></div>
+        </div>
+
+        <aside class="map-panel" aria-label="Mapa do cemitério">
+            <div class="map-placeholder">
+                <div class="map-placeholder-icon">🗺️</div>
+                <h3>Mapa do Cemitério</h3>
+                <p>Realize uma busca para ver a localização</p>
+            </div>
+        </aside>
+    </section>
 </div>
 
 <script>
+const resultsState = {
+    all: [],
+    filtered: [],
+    activeSetor: 'Todos',
+    selectedId: null
+};
+
+function formatDateBR(dateString) {
+    if (!dateString) return null;
+    return new Date(dateString).toLocaleDateString('pt-BR');
+}
+
+async function loadSearchFilters() {
+    try {
+        const response = await fetch('/api/filtros');
+        const data = await response.json();
+        if (!response.ok) return;
+
+        const setorSelect = document.getElementById('setorInput');
+        const quadraOptions = document.getElementById('quadraOptions');
+
+        (data.setores || []).forEach(setor => {
+            const option = document.createElement('option');
+            option.value = setor;
+            option.textContent = `Setor ${setor}`;
+            setorSelect.appendChild(option);
+        });
+
+        (data.quadras || []).forEach(quadra => {
+            const option = document.createElement('option');
+            option.value = quadra;
+            quadraOptions.appendChild(option);
+        });
+    } catch (_) {
+        // Mantem os filtros vazios caso a API de apoio falhe.
+    }
+}
+
+function renderFilters(resultados) {
+    const filtersDiv = document.getElementById('resultsFilters');
+    const setores = [...new Set(resultados.map(r => r.setor).filter(Boolean))].sort();
+    const filterItems = ['Todos', ...setores.map(s => `Setor ${s}`)];
+
+    filtersDiv.innerHTML = filterItems
+        .map(label => `
+            <button
+                type="button"
+                class="filter-chip ${label === resultsState.activeSetor ? 'active' : ''}"
+                data-filter="${label}">
+                ${label}
+            </button>
+        `)
+        .join('');
+}
+
+function renderResultCards() {
+    const resultsDiv = document.getElementById('results');
+    const countBadge = document.getElementById('resultsCountBadge');
+    countBadge.textContent = String(resultsState.filtered.length);
+
+    if (resultsState.filtered.length === 0) {
+        resultsDiv.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">🔎</div>
+                <p>Nenhum registro encontrado para os filtros aplicados.</p>
+            </div>
+        `;
+        return;
+    }
+
+    resultsDiv.innerHTML = `<div class="results-list">${resultsState.filtered.map(resultado => `
+        <article class="result-card ${resultsState.selectedId === resultado.id ? 'selected' : ''}" data-id="${resultado.id}">
+            <h4 class="card-title">${resultado.nome}</h4>
+
+            <div class="card-meta-row">
+                <span class="meta-chip meta-lapide">🪦 ${resultado.jazigo}</span>
+                <span class="meta-chip meta-location">📍 Setor ${resultado.setor} — ${resultado.quadra}</span>
+            </div>
+
+            <div class="card-meta-row">
+                ${resultado.data_nascimento ? `<span class="meta-chip meta-birth">🎂 ${formatDateBR(resultado.data_nascimento)}</span>` : ''}
+                ${resultado.data_falecimento ? `<span class="meta-chip meta-death">✝ ${formatDateBR(resultado.data_falecimento)}</span>` : ''}
+            </div>
+
+            <p class="card-action">↗ Ver no mapa</p>
+        </article>
+    `).join('')}</div>`;
+}
+
+function applyFilter(filterLabel) {
+    resultsState.activeSetor = filterLabel;
+
+    if (filterLabel === 'Todos') {
+        resultsState.filtered = [...resultsState.all];
+    } else {
+        const setor = filterLabel.replace('Setor ', '').trim();
+        resultsState.filtered = resultsState.all.filter(r => r.setor === setor);
+    }
+
+    if (!resultsState.filtered.some(r => r.id === resultsState.selectedId)) {
+        resultsState.selectedId = null;
+    }
+
+    renderFilters(resultsState.all);
+    renderResultCards();
+}
+
+document.getElementById('results').addEventListener('click', (e) => {
+    const card = e.target.closest('.result-card[data-id]');
+    if (!card) return;
+
+    resultsState.selectedId = Number(card.dataset.id);
+    renderResultCards();
+});
+
+document.getElementById('resultsFilters').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-filter]');
+    if (!btn) return;
+    applyFilter(btn.dataset.filter);
+});
+
 document.getElementById('searchForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const nome = document.getElementById('nomeInput').value.trim();
+    const lapide = document.getElementById('lapideInput').value.trim();
+    const setor = document.getElementById('setorInput').value.trim();
+    const quadra = document.getElementById('quadraInput').value.trim();
+    const dataFalecimentoDe = document.getElementById('dataFalecimentoDeInput').value;
+    const dataFalecimentoAte = document.getElementById('dataFalecimentoAteInput').value;
     const resultsDiv = document.getElementById('results');
     const errorDiv = document.getElementById('error');
     const loadingDiv = document.getElementById('loading');
     
     // Limpar anteriores
-    resultsDiv.innerHTML = '';
     errorDiv.innerHTML = '';
     
-    if (!nome) {
-        errorDiv.innerHTML = '<p>Por favor, digite um nome</p>';
+    if (!nome && !lapide && !setor && !quadra && !dataFalecimentoDe && !dataFalecimentoAte) {
+        errorDiv.innerHTML = '<p>Informe pelo menos um filtro para buscar.</p>';
         return;
     }
     
@@ -49,7 +224,14 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ nome })
+            body: JSON.stringify({
+                nome,
+                lapide,
+                setor,
+                quadra,
+                data_falecimento_de: dataFalecimentoDe || null,
+                data_falecimento_ate: dataFalecimentoAte || null
+            })
         });
         
         const data = await response.json();
@@ -57,25 +239,16 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
         
         if (response.ok) {
             if (data.resultados && data.resultados.length > 0) {
-                let html = `<h3>Resultados encontrados: ${data.total}</h3><div class="results-list">`;
-                
-                data.resultados.forEach(resultado => {
-                    html += `
-                        <div class="result-item">
-                            <h4>${resultado.nome}</h4>
-                            <p><strong>Setor:</strong> ${resultado.setor}</p>
-                            <p><strong>Quadra:</strong> ${resultado.quadra}</p>
-                            <p><strong>Jazigo:</strong> ${resultado.jazigo}</p>
-                            ${resultado.data_falecimento ? `<p><strong>Data:</strong> ${new Date(resultado.data_falecimento).toLocaleDateString('pt-BR')}</p>` : ''}
-                            ${resultado.observacoes ? `<p><strong>Observações:</strong> ${resultado.observacoes}</p>` : ''}
-                        </div>
-                    `;
-                });
-                
-                html += '</div>';
-                resultsDiv.innerHTML = html;
+                resultsState.all = data.resultados;
+                resultsState.selectedId = null;
+                applyFilter('Todos');
             } else {
-                resultsDiv.innerHTML = '<p class="no-results">Nenhum resultado encontrado para "' + nome + '"</p>';
+                resultsState.all = [];
+                resultsState.filtered = [];
+                resultsState.selectedId = null;
+                renderFilters([]);
+                resultsDiv.innerHTML = '<p class="no-results">Nenhum resultado encontrado para os filtros informados.</p>';
+                document.getElementById('resultsCountBadge').textContent = '0';
             }
         } else {
             errorDiv.innerHTML = '<p>' + (data.erro || 'Erro ao buscar') + '</p>';
@@ -85,5 +258,37 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
         errorDiv.innerHTML = '<p>Erro de conexão: ' + error.message + '</p>';
     }
 });
+
+document.getElementById('clearSearchBtn').addEventListener('click', () => {
+    document.getElementById('nomeInput').value = '';
+    document.getElementById('lapideInput').value = '';
+    document.getElementById('setorInput').value = '';
+    document.getElementById('quadraInput').value = '';
+    document.getElementById('dataFalecimentoDeInput').value = '';
+    document.getElementById('dataFalecimentoAteInput').value = '';
+
+    resultsState.all = [];
+    resultsState.filtered = [];
+    resultsState.selectedId = null;
+    renderFilters([]);
+    document.getElementById('resultsCountBadge').textContent = '0';
+    document.getElementById('error').innerHTML = '';
+
+    document.getElementById('results').innerHTML = `
+        <div class="empty-state">
+            <div class="empty-state-icon">🔍</div>
+            <p>Use os filtros acima para buscar registros no cemitério.</p>
+        </div>
+    `;
+});
+
+document.getElementById('results').innerHTML = `
+    <div class="empty-state">
+        <div class="empty-state-icon">🔍</div>
+        <p>Use os filtros acima para buscar registros no cemitério.</p>
+    </div>
+`;
+
+loadSearchFilters();
 </script>
 {% endblock %}

@@ -2,8 +2,13 @@
 
 {% block content %}
 <div class="admin-container">
-    <h2>Painel Administrativo</h2>
-    <p class="notice">⚠️ <strong>Futuro:</strong> Esta página ainda não tem autenticação implementada (será adicionada na próxima fase)</p>
+    <div class="admin-heading-row">
+        <h2>Painel Administrativo</h2>
+        <form action="/admin/logout" method="post" class="logout-form">
+            <button type="submit" class="btn btn-secondary">Sair</button>
+        </form>
+    </div>
+    <p class="notice"><strong>Acesso restrito:</strong> voce esta em uma area autenticada do sistema.</p>
     
     <div class="admin-section">
         <h3>Adicionar Novo Registro</h3>
@@ -28,9 +33,15 @@
                 </div>
             </div>
             
-            <div class="form-group">
-                <label for="dataInput">Data de Falecimento</label>
-                <input type="date" id="dataInput">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="dataNascimentoInput">Data de Nascimento</label>
+                    <input type="date" id="dataNascimentoInput">
+                </div>
+                <div class="form-group">
+                    <label for="dataFalecimentoInput">Data de Falecimento</label>
+                    <input type="date" id="dataFalecimentoInput">
+                </div>
             </div>
             
             <div class="form-group">
@@ -44,14 +55,282 @@
 
     <div class="admin-section">
         <h3>Registros Existentes</h3>
-        <button id="carregarBtn" class="btn btn-secondary">Carregar Registros</button>
+        <div class="admin-toolbar">
+            <div class="admin-toolbar-fields">
+                <input type="text" id="buscaNomeInput" placeholder="Buscar por nome">
+                <input type="text" id="buscaSetorInput" placeholder="Setor">
+                <input type="text" id="buscaQuadraInput" placeholder="Quadra">
+            </div>
+            <div class="admin-toolbar-actions">
+                <button id="buscarBtn" class="btn btn-primary" type="button">Buscar</button>
+                <button id="limparBuscaBtn" class="btn btn-secondary" type="button">Limpar</button>
+                <button id="carregarBtn" class="btn btn-secondary" type="button">Atualizar Lista</button>
+            </div>
+        </div>
         <div id="registrosList"></div>
+
+        <div id="editPanel" class="edit-panel" hidden>
+            <h4>Editar Registro</h4>
+            <form id="editForm">
+                <input type="hidden" id="editIdInput">
+
+                <div class="form-group">
+                    <label for="editNomeInput">Nome do Falecido *</label>
+                    <input type="text" id="editNomeInput" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="editSetorInput">Setor *</label>
+                        <input type="text" id="editSetorInput" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editQuadraInput">Quadra *</label>
+                        <input type="text" id="editQuadraInput" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editJazigoInput">Jazigo *</label>
+                        <input type="text" id="editJazigoInput" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="editDataNascimentoInput">Data de Nascimento</label>
+                        <input type="date" id="editDataNascimentoInput">
+                    </div>
+                    <div class="form-group">
+                        <label for="editDataFalecimentoInput">Data de Falecimento</label>
+                        <input type="date" id="editDataFalecimentoInput">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="editObservacoesInput">Observações</label>
+                    <textarea id="editObservacoesInput" rows="3"></textarea>
+                </div>
+
+                <div class="edit-actions">
+                    <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+                    <button type="button" id="cancelarEdicaoBtn" class="btn btn-secondary">Cancelar</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <div id="message" class="message-container"></div>
 </div>
 
 <script>
+const state = {
+    currentPage: 1,
+    perPage: 10,
+    filters: {
+        nome: '',
+        setor: '',
+        quadra: ''
+    },
+    recordsById: {},
+    isLoading: false
+};
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function setMessage(type, text) {
+    const msgDiv = document.getElementById('message');
+    msgDiv.innerHTML = '<p class="' + type + '">' + escapeHtml(text) + '</p>';
+}
+
+function clearMessage() {
+    document.getElementById('message').innerHTML = '';
+}
+
+function setToolbarLoading(isLoading) {
+    state.isLoading = isLoading;
+    const buttons = [
+        document.getElementById('buscarBtn'),
+        document.getElementById('limparBuscaBtn'),
+        document.getElementById('carregarBtn')
+    ];
+
+    buttons.forEach((btn) => {
+        btn.disabled = isLoading;
+        btn.classList.toggle('btn-loading', isLoading);
+    });
+}
+
+function renderRegistrosLoading(loadingText) {
+    document.getElementById('registrosList').innerHTML = `
+        <div class="registros-loading">
+            <span class="loading-spinner" aria-hidden="true"></span>
+            <span>${escapeHtml(loadingText)}</span>
+        </div>
+    `;
+}
+
+function redirectToAdminLogin() {
+    window.location.href = '/admin/login?next=/admin';
+}
+
+function formatDatePtBr(dateValue) {
+    if (!dateValue) {
+        return '-';
+    }
+    return new Date(dateValue).toLocaleDateString('pt-BR');
+}
+
+function toDateInputValue(dateValue) {
+    if (!dateValue) {
+        return '';
+    }
+    return dateValue;
+}
+
+function readSearchFiltersFromInputs() {
+    state.filters.nome = document.getElementById('buscaNomeInput').value.trim();
+    state.filters.setor = document.getElementById('buscaSetorInput').value.trim();
+    state.filters.quadra = document.getElementById('buscaQuadraInput').value.trim();
+}
+
+function buildRegistrosQuery(page) {
+    const params = new URLSearchParams({
+        page: String(page),
+        per_page: String(state.perPage)
+    });
+
+    if (state.filters.nome) {
+        params.append('nome', state.filters.nome);
+    }
+    if (state.filters.setor) {
+        params.append('setor', state.filters.setor);
+    }
+    if (state.filters.quadra) {
+        params.append('quadra', state.filters.quadra);
+    }
+
+    return params.toString();
+}
+
+function hideEditPanel() {
+    document.getElementById('editPanel').hidden = true;
+    document.getElementById('editForm').reset();
+    document.getElementById('editIdInput').value = '';
+}
+
+function openEditPanel(registro) {
+    document.getElementById('editIdInput').value = registro.id;
+    document.getElementById('editNomeInput').value = registro.nome || '';
+    document.getElementById('editSetorInput').value = registro.setor || '';
+    document.getElementById('editQuadraInput').value = registro.quadra || '';
+    document.getElementById('editJazigoInput').value = registro.jazigo || '';
+    document.getElementById('editDataNascimentoInput').value = toDateInputValue(registro.data_nascimento);
+    document.getElementById('editDataFalecimentoInput').value = toDateInputValue(registro.data_falecimento);
+    document.getElementById('editObservacoesInput').value = registro.observacoes || '';
+
+    document.getElementById('editPanel').hidden = false;
+    document.getElementById('editNomeInput').focus();
+}
+
+function renderRegistros(data) {
+    state.recordsById = {};
+    let html = `<p class="registros-total"><strong>Total de registros:</strong> ${data.total}</p>`;
+
+    if (data.registros && data.registros.length > 0) {
+        html += '<div class="registros-table-wrap">';
+        html += '<table class="registros-table"><thead><tr>' +
+            '<th>Nome</th><th>Nascimento</th><th>Falecimento</th><th>Setor</th><th>Quadra</th><th>Jazigo</th><th>Ações</th>' +
+            '</tr></thead><tbody>';
+
+        data.registros.forEach(reg => {
+            state.recordsById[reg.id] = reg;
+            html += `<tr>
+                <td>${escapeHtml(reg.nome)}</td>
+                <td>${formatDatePtBr(reg.data_nascimento)}</td>
+                <td>${formatDatePtBr(reg.data_falecimento)}</td>
+                <td>${escapeHtml(reg.setor)}</td>
+                <td>${escapeHtml(reg.quadra)}</td>
+                <td>${escapeHtml(reg.jazigo)}</td>
+                <td>
+                    <button type="button" class="btn btn-secondary btn-small editar-btn" data-id="${reg.id}">Editar</button>
+                </td>
+            </tr>`;
+        });
+
+        html += '</tbody></table></div>';
+
+        if (data.total_paginas > 1) {
+            html += `
+                <div class="pagination-controls">
+                    <button class="btn btn-secondary pagination-btn" data-page="${data.page - 1}" ${data.page <= 1 ? 'disabled' : ''}>Anterior</button>
+                    <span class="pagination-info">Página ${data.page} de ${data.total_paginas}</span>
+                    <button class="btn btn-secondary pagination-btn" data-page="${data.page + 1}" ${data.page >= data.total_paginas ? 'disabled' : ''}>Próxima</button>
+                </div>
+            `;
+        }
+    } else {
+        html += '<p>Nenhum registro encontrado.</p>';
+    }
+
+    document.getElementById('registrosList').innerHTML = html;
+
+    document.querySelectorAll('.pagination-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (state.isLoading) {
+                return;
+            }
+            const targetPage = parseInt(btn.dataset.page, 10);
+            if (!Number.isNaN(targetPage)) {
+                loadRegistros(targetPage, 'Carregando pagina...');
+            }
+        });
+    });
+
+    document.querySelectorAll('.editar-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = parseInt(btn.dataset.id, 10);
+            const registro = state.recordsById[id];
+            if (registro) {
+                openEditPanel(registro);
+            }
+        });
+    });
+}
+
+async function loadRegistros(page = 1, loadingText = 'Carregando registros...') {
+    try {
+        setToolbarLoading(true);
+        renderRegistrosLoading(loadingText);
+
+        const query = buildRegistrosQuery(page);
+        const response = await fetch(`/api/admin/registros?${query}`);
+
+        if (response.status === 401) {
+            redirectToAdminLogin();
+            return;
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.erro || 'Erro ao carregar registros');
+        }
+
+        state.currentPage = data.page || page;
+        renderRegistros(data);
+    } catch (error) {
+        setMessage('error', 'Erro ao carregar: ' + error.message);
+    } finally {
+        setToolbarLoading(false);
+    }
+}
+
 // Adicionar novo registro
 document.getElementById('addForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -61,7 +340,8 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
         setor: document.getElementById('setorInput').value,
         quadra: document.getElementById('quadraInput').value,
         jazigo: document.getElementById('jazigoInput').value,
-        data_falecimento: document.getElementById('dataInput').value || null,
+        data_nascimento: document.getElementById('dataNascimentoInput').value || null,
+        data_falecimento: document.getElementById('dataFalecimentoInput').value || null,
         observacoes: document.getElementById('observacoesInput').value
     };
     
@@ -71,51 +351,98 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
+
+        if (response.status === 401) {
+            redirectToAdminLogin();
+            return;
+        }
         
         const result = await response.json();
-        const msgDiv = document.getElementById('message');
         
         if (response.ok) {
-            msgDiv.innerHTML = '<p class="success">' + result.mensagem + '</p>';
+            setMessage('success', result.mensagem);
             document.getElementById('addForm').reset();
             document.getElementById('nomeInput').focus();
+            loadRegistros(state.currentPage, 'Atualizando lista...');
         } else {
-            msgDiv.innerHTML = '<p class="error">' + (result.erro || 'Erro ao adicionar') + '</p>';
+            setMessage('error', result.erro || 'Erro ao adicionar');
         }
     } catch (error) {
-        document.getElementById('message').innerHTML = '<p class="error">Erro: ' + error.message + '</p>';
+        setMessage('error', 'Erro: ' + error.message);
     }
+});
+
+// Editar registro existente
+document.getElementById('editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const id = document.getElementById('editIdInput').value;
+    const payload = {
+        nome_falecido: document.getElementById('editNomeInput').value.trim(),
+        setor: document.getElementById('editSetorInput').value.trim(),
+        quadra: document.getElementById('editQuadraInput').value.trim(),
+        jazigo: document.getElementById('editJazigoInput').value.trim(),
+        data_nascimento: document.getElementById('editDataNascimentoInput').value || null,
+        data_falecimento: document.getElementById('editDataFalecimentoInput').value || null,
+        observacoes: document.getElementById('editObservacoesInput').value.trim()
+    };
+
+    if (!payload.nome_falecido || !payload.setor || !payload.quadra || !payload.jazigo) {
+        setMessage('error', 'Preencha os campos obrigatórios da edição.');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/admin/editar/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.status === 401) {
+            redirectToAdminLogin();
+            return;
+        }
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.erro || 'Erro ao atualizar registro');
+        }
+
+        setMessage('success', result.mensagem || 'Registro atualizado com sucesso');
+        hideEditPanel();
+        loadRegistros(state.currentPage, 'Atualizando lista...');
+    } catch (error) {
+        setMessage('error', 'Erro ao editar: ' + error.message);
+    }
+});
+
+document.getElementById('buscarBtn').addEventListener('click', () => {
+    readSearchFiltersFromInputs();
+    hideEditPanel();
+    loadRegistros(1, 'Buscando registros...');
+});
+
+document.getElementById('limparBuscaBtn').addEventListener('click', () => {
+    document.getElementById('buscaNomeInput').value = '';
+    document.getElementById('buscaSetorInput').value = '';
+    document.getElementById('buscaQuadraInput').value = '';
+    state.filters = { nome: '', setor: '', quadra: '' };
+    clearMessage();
+    hideEditPanel();
+    loadRegistros(1, 'Carregando registros...');
+});
+
+document.getElementById('cancelarEdicaoBtn').addEventListener('click', () => {
+    hideEditPanel();
 });
 
 // Carregar registros
 document.getElementById('carregarBtn').addEventListener('click', async () => {
-    try {
-        const response = await fetch('/api/admin/registros');
-        const data = await response.json();
-        
-        let html = `<p><strong>Total de registros: ${data.total}</strong></p>`;
-        
-        if (data.registros && data.registros.length > 0) {
-            html += '<table class="registros-table"><thead><tr>' +
-                    '<th>Nome</th><th>Setor</th><th>Quadra</th><th>Jazigo</th>' +
-                    '</tr></thead><tbody>';
-            
-            data.registros.forEach(reg => {
-                html += `<tr>
-                    <td>${reg.nome}</td>
-                    <td>${reg.setor}</td>
-                    <td>${reg.quadra}</td>
-                    <td>${reg.jazigo}</td>
-                </tr>`;
-            });
-            
-            html += '</tbody></table>';
-        }
-        
-        document.getElementById('registrosList').innerHTML = html;
-    } catch (error) {
-        document.getElementById('message').innerHTML = '<p class="error">Erro ao carregar: ' + error.message + '</p>';
-    }
+    readSearchFiltersFromInputs();
+    hideEditPanel();
+    loadRegistros(1, 'Carregando registros...');
 });
 </script>
 {% endblock %}

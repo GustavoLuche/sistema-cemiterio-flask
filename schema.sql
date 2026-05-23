@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS falecidos (
     id SERIAL PRIMARY KEY,
     nome_falecido VARCHAR(255) NOT NULL,
+    data_nascimento DATE,
     data_falecimento DATE,
     cemiterio VARCHAR(255) DEFAULT 'Cemitério da Igualdade',
     setor VARCHAR(50) NOT NULL,

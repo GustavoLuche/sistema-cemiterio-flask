@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Login Administrativo - Cemitério da Igualdade{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <section class="auth-card">
+        <h2>Login Administrativo</h2>
+        <p class="auth-subtitle">Informe suas credenciais para acessar o painel.</p>
+
+        {% if erro %}
+            <p class="auth-error">{{ erro }}</p>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('admin_login') }}" class="auth-form">
+            <input type="hidden" name="next" value="{{ next_target }}">
+
+            <div class="form-group">
+                <label for="username">Usuario</label>
+                <input type="text" id="username" name="username" autocomplete="username" required>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Senha</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary auth-submit">Entrar</button>
+        </form>
+    </section>
+</div>
+{% endblock %}

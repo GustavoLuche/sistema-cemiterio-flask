@@ -1,195 +1,143 @@
-# 🏛️ Sistema de Busca de Túmulos - Cemitério da Igualdade
+# Sistema de Busca de Túmulos - Cemitério da Igualdade
 
-**Grupo 3 - UNIVESP - Projeto Integrador (PI)**
+Aplicação web desenvolvida no Projeto Integrador (UNIVESP) para localizar registros de falecidos no Cemitério da Igualdade.
 
-## 📋 Sobre o Projeto
+## Funcionalidades
 
-Sistema web para facilitar a busca de registros de falecidos no Cemitério da Igualdade, localizado em Primavera, Rosana-SP. Desenvolvido como resposta a um problema identificado através de Design Thinking: centenas de visitantes mensais têm dificuldade em localizar túmulos devido ao layout não sequencial do cemitério.
+### Busca pública
+- Filtros por nome, lápide (jazigo), setor, quadra e intervalo de data de falecimento.
+- Resultado em cards com dados de localização (setor, quadra e jazigo).
+- Layout responsivo para desktop e mobile.
 
-**Validação**: 29 pessoas responderam a pesquisa Microsoft Forms com 83-93% de apoio à solução digital.
+### Painel administrativo
+- Login obrigatório com sessão.
+- Cadastro de novos registros.
+- Listagem com paginação.
+- Busca de registros por nome, setor e quadra.
+- Edição de registros existentes.
+- Loading visual durante busca/listagem.
 
-## 🚀 Características MVP
+## Tecnologias
 
-- ✅ **Busca por Nome**: Busca case-insensitive de falecidos
-- ✅ **Localização**: Exibição de setor, quadra e jazigo
-- ✅ **Interface Responsiva**: Funciona em desktop, tablet e mobile
-- ✅ **Painel Admin**: Criar, editar e deletar registros (futuro: com autenticação)
-- ✅ **Validação**: Campos obrigatórios e feedback do usuário
-- ✅ **API REST**: Endpoints para integração futura
+- Python 3.12+
+- Flask 3
+- PostgreSQL
+- psycopg 3
+- Gunicorn
+- HTML, CSS e JavaScript (vanilla)
 
-## 🛠️ Stack Tecnológico
+## Estrutura principal
 
-| Camada | Tecnologia | Versão |
-|--------|-----------|--------|
-| Backend | Flask | 3.0.0 |
-| Banco de Dados | PostgreSQL | 12+ |
-| Frontend | HTML5 + CSS3 | - |
-| Linguagem | Python | 3.10+ |
-| Hospedagem | Render (prod) | - |
-
-## 📦 Instalação Local
-
-### Pré-requisitos
-- Python 3.10+
-- PostgreSQL 12+
-- Git
-
-### Passo 1: Clonar Repositório
-```bash
-git clone https://github.com/GustavoLuche/sistema-cemiterio-flask.git
-cd sistema-cemiterio-flask
+```text
+app.py
+schema.sql
+seed_data.py
+requirements.txt
+render.yaml
+templates/
+    base.html
+    index.html
+    admin.html
+    admin_login.html
+static/
+    styles.css
+docs/
 ```
 
-### Passo 2: Criar Ambiente Virtual
+## Configuração local
+
+### 1. Ambiente virtual e dependências
+
 ```bash
 python -m venv .venv
 # Windows
 .venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
-```
-
-### Passo 3: Instalar Dependências
-```bash
 pip install -r requirements.txt
 ```
 
-### Passo 4: Configurar Banco de Dados
-1. Criar arquivo `.env` baseado em `.env.example`
-2. Adicionar `DATABASE_URL` com suas credenciais PostgreSQL
-3. Executar schema:
+### 2. Variáveis de ambiente
+
+Crie o arquivo `.env` (baseado no `.env.example`) com os valores mínimos:
+
+```env
+DATABASE_URL=postgresql://usuario:senha@host:5432/banco
+FLASK_SECRET_KEY=troque-por-uma-chave-segura
+
+# Usuario admin inicial (criado automaticamente no banco se nao existir)
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin123
+ADMIN_EMAIL=admin@admin.local
+
+FLASK_DEBUG=True
+PORT=5000
+```
+
+### 3. Inicialização do banco
+
+Ao subir a aplicação, o `app.py` executa migração/ajustes automaticamente:
+- cria tabela `falecidos` (se não existir)
+- cria tabela `usuarios` (autenticação admin)
+- garante índices
+- cria usuário admin inicial se ainda não existir
+
+Opcionalmente, você pode aplicar o schema manualmente:
+
 ```bash
 psql -U seu_usuario -d seu_banco -f schema.sql
 ```
 
-### Passo 5: Executar Aplicação
+### 4. Executar aplicação
+
 ```bash
 python app.py
 ```
-Acesse em: http://localhost:5000
 
-## 📚 Estrutura do Projeto
+Acesse:
+- Busca pública: `http://localhost:5000/`
+- Login admin: `http://localhost:5000/admin/login`
 
-```
-├── app.py                 # Aplicação Flask principal
-├── requirements.txt       # Dependências Python
-├── schema.sql            # Schema do banco de dados
-├── .env.example          # Template de variáveis de ambiente
-├── README.md             # Este arquivo
-├── static/
-│   └── styles.css        # Folha de estilos
-└── templates/
-    ├── base.html         # Template base
-    ├── index.html        # Página de busca (público)
-    └── admin.html        # Painel administrativo
-```
+## Seed de dados
 
-## 🔌 API Endpoints
-
-### Busca Pública
-- **GET** `/` - Página inicial
-- **POST** `/api/buscar` - Buscar falecido por nome
-
-### Admin (Futuro com autenticação)
-- **GET** `/admin` - Painel administrativo
-- **GET** `/api/admin/registros` - Listar todos
-- **POST** `/api/admin/adicionar` - Novo registro
-- **PUT** `/api/admin/editar/<id>` - Editar registro
-- **DELETE** `/api/admin/deletar/<id>` - Deletar registro
-
-## 🗄️ Modelo de Dados
-
-```sql
--- Tabela principal de falecidos
-falecidos
-├── id (PK)
-├── nome_falecido (VARCHAR)
-├── data_falecimento (DATE)
-├── cemiterio (VARCHAR)
-├── setor (VARCHAR)
-├── quadra (VARCHAR)
-├── jazigo (VARCHAR)
-├── observacoes (TEXT)
-├── data_criacao (TIMESTAMP)
-└── data_atualizacao (TIMESTAMP)
-```
-
-## 🚢 Deploy no Render
-
-### Opção 1 (Recomendada): Blueprint automático
-
-Este repositório inclui `render.yaml`, que cria PostgreSQL + Web Service automaticamente.
-
-1. Acesse https://render.com
-2. New + → Blueprint
-3. Selecione o repo `GustavoLuche/sistema-cemiterio-flask`
-4. O Render criará:
-    - Banco PostgreSQL `cemiterio-db`
-    - Web Service `sistema-cemiterio-flask`
-    - Variáveis `DATABASE_URL`, `FLASK_ENV`, `FLASK_DEBUG`
-
-### Opção 2: Criação manual
-
-1. New + → PostgreSQL
-2. New + → Web Service (repo GitHub)
-3. Build Command: `pip install -r requirements.txt`
-4. Start Command: `gunicorn app:app`
-5. Em Environment, configurar:
-```
-DATABASE_URL: (connection string do Postgres)
-FLASK_ENV: production
-FLASK_DEBUG: False
-```
-
-## 📱 Uso
-
-### Buscar Falecido
-1. Acesse a página inicial
-2. Digite o nome (parcial ou completo)
-3. Clique em "Buscar"
-4. Resultado mostra setor/quadra/jazigo
-
-### Admin (Futuro)
-1. Acesse `/admin`
-2. Autentique (será implementado)
-3. Gerencie registros (criar, editar, deletar)
-
-## 🧪 Testes (Futuro)
+Para popular com dados fictícios de teste:
 
 ```bash
-pytest tests/
+python seed_data.py
 ```
 
-## 🤝 Contribuindo
+## Endpoints principais
 
-1. Crie uma branch: `git checkout -b feature/nova-feature`
-2. Commit suas mudanças: `git commit -m 'Add nova feature'`
-3. Push: `git push origin feature/nova-feature`
-4. Abra Pull Request
+### Público
+- `GET /`
+- `POST /api/buscar`
+- `GET /api/filtros`
 
-## 📅 Timeline Projeto
+### Administrativo (protegido por sessão)
+- `GET /admin`
+- `GET /admin/login`
+- `POST /admin/login`
+- `POST /admin/logout`
+- `GET /api/admin/registros`
+- `POST /api/admin/adicionar`
+- `PUT /api/admin/editar/<id>`
+- `DELETE /api/admin/deletar/<id>`
 
-- **Q2 (Fev-Mar)**: Planejamento e Design
-- **Q3 (Abr)**: Desenvolvimento MVP
-- **Q4 (Abr-Mai)**: Testes e Relatório Parcial
-- **Q5-Q7 (Mai-Jun)**: Finalização e Deploy
+## Deploy no Render
 
-## 📞 Contato
+O projeto já possui `render.yaml` com blueprint para:
+- banco PostgreSQL
+- web service Flask com Gunicorn
 
-**Orientador**: Daniel Augusto Oliveira Massolla
+Passos:
+1. No Render, criar via Blueprint usando o repositório.
+2. Confirmar variáveis de ambiente (principalmente `DATABASE_URL`, `FLASK_SECRET_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_EMAIL`).
+3. Publicar.
 
-**Equipe Grupo 3**:
-- Douglas
-- Gustavo Luche
-- Gustavo Valerio Reis
-- Heverton
-- João Vitor
-- Willian
+## Segurança (recomendado)
 
-## 📄 Licença
+- Defina `FLASK_SECRET_KEY` forte em produção.
+- Troque `ADMIN_PASSWORD` padrão antes de publicar.
+- Use HTTPS no ambiente de produção.
 
-Projeto educacional - UNIVESP 2026
+## Contexto acadêmico
 
----
-
-**Última atualização**: Maio 2026
+Projeto educacional desenvolvido pelo Grupo 3 - UNIVESP, no âmbito do Projeto Integrador.
